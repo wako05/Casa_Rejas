@@ -21,6 +21,7 @@ class Product(Base):
     stock = Column(Integer, default=0) # Cantidad actual en stock, por defecto 0
     min_stock = Column(Integer, default=0) # Stock mínimo para activar alarma, por defecto 0
     units_per_box = Column(Integer, default=1) # Unidades por caja (para tipos de caja), por defecto 1
+    cost_price_box = Column(Float, nullable=False, default=0.0) # Nuevo campo: Valor de compra de la caja al distribuidor
 
     # Relación con la tabla de ventas, indica que un producto puede tener muchas ventas
     sales = relationship("Sale", back_populates="product")
@@ -74,6 +75,11 @@ class InventoryModification(Base):
 engine = create_engine('sqlite:///inventory.db')
 
 # Crea todas las tablas definidas en los modelos en la base de datos
+# Si ya existe una base de datos, esto no la sobrescribirá, solo agregará la nueva columna si es necesario.
+# Sin embargo, para que los cambios en la estructura de la tabla (como añadir una nueva columna)
+# se apliquen a una base de datos existente, a menudo se necesita una herramienta de migración (como Alembic).
+# Para este ejemplo, si ya tienes datos, es posible que necesites borrar inventory.db y volver a ejecutar
+# para que la nueva columna 'cost_price_box' se cree con el default.
 Base.metadata.create_all(engine)
 
 # Crea una clase de sesión para interactuar con la base de datos
