@@ -1,9 +1,8 @@
 # ui.py
 import streamlit as st
 import pandas as pd
-# Asegúrate de importar get_current_inventory, update_product_details y get_inventory_modifications desde main
-# Se ha eliminado update_product_stock de la importación ya que su funcionalidad es cubierta por update_product_details
-from main import add_product, get_all_products, record_sale, get_all_sales, get_product_by_id, get_current_inventory, update_product_details, get_inventory_modifications
+# Asegúrate de importar todas las funciones necesarias, incluyendo la nueva calculate_profit_per_type
+from main import add_product, get_all_products, record_sale, get_all_sales, get_product_by_id, get_current_inventory, update_product_details, get_inventory_modifications, calculate_profit_per_type
 from io import BytesIO
 
 # Función para convertir un DataFrame a formato Excel
@@ -32,32 +31,35 @@ with tab1:
         product_name = st.text_input("Nombre del Producto")
         col1, col2, col3 = st.columns(3) # Columnas para organizar los campos de precio
         with col1:
-            price_caja_fria = st.number_input("Precio Caja Fria", min_value=0.0, format="%.2f")
-            price_six_pack = st.number_input("Precio Six-Pack", min_value=0.0, format="%.2f")
+            price_caja_fria = st.number_input("Precio Caja Fria", min_value=0.0, format="%.2f", key="add_price_caja_fria")
+            price_six_pack = st.number_input("Precio Six-Pack", min_value=0.0, format="%.2f", key="add_price_six_pack")
         with col2:
-            price_caja_caliente = st.number_input("Precio Caja Caliente", min_value=0.0, format="%.2f")
-            price_unitario = st.number_input("Precio Unitario", min_value=0.0, format="%.2f")
+            price_caja_caliente = st.number_input("Precio Caja Caliente", min_value=0.0, format="%.2f", key="add_price_caja_caliente")
+            price_unitario = st.number_input("Precio Unitario", min_value=0.0, format="%.2f", key="add_price_unitario")
         with col3:
-            price_caja_particular = st.number_input("Precio Caja Particular", min_value=0.0, format="%.2f")
+            price_caja_particular = st.number_input("Precio Caja Particular", min_value=0.0, format="%.2f", key="add_price_caja_particular")
 
-        stock = st.number_input("Stock Actual", min_value=0, step=1) # Campo para el stock actual
-        min_stock = st.number_input("Stock Mínimo para Alerta", min_value=0, step=1) # Campo para el stock mínimo
+        # Nuevo campo: Valor Caja (Costo al Distribuidor)
+        cost_price_box = st.number_input("Valor Caja (Costo al Distribuidor)", min_value=0.0, format="%.2f", key="add_cost_price_box")
+
+        stock = st.number_input("Stock Actual", min_value=0, step=1, key="add_stock") # Campo para el stock actual
+        min_stock = st.number_input("Stock Mínimo para Alerta", min_value=0, step=1, key="add_min_stock") # Campo para el stock mínimo
 
         # Selector para las unidades por caja
         units_per_box_options = {"30 unidades": 30, "24 unidades": 24, "13 unidades": 13, "6 unidades (Six-Pack)": 6, "1 unidad (Unitario)": 1}
-        selected_units_per_box_label = st.selectbox("Unidades por CAJA (para precios de caja)", list(units_per_box_options.keys()))
+        selected_units_per_box_label = st.selectbox("Unidades por CAJA (para precios de caja)", list(units_per_box_options.keys()), key="add_units_per_box_label")
         units_per_box = units_per_box_options[selected_units_per_box_label] # Obtiene el valor numérico
 
         # Botón para agregar el producto
-        if st.button("Agregar Producto al Inventario"):
-            if product_name and (price_caja_fria >= 0 and price_caja_caliente >= 0 and price_caja_particular >= 0 and price_six_pack >= 0 and price_unitario >= 0):
-                success, message = add_product(product_name, price_caja_fria, price_caja_caliente, price_caja_particular, price_six_pack, price_unitario, stock, min_stock, units_per_box)
+        if st.button("Agregar Producto al Inventario", key="add_product_button"):
+            if product_name and (price_caja_fria >= 0 and price_caja_caliente >= 0 and price_caja_particular >= 0 and price_six_pack >= 0 and price_unitario >= 0 and cost_price_box >= 0):
+                success, message = add_product(product_name, price_caja_fria, price_caja_caliente, price_caja_particular, price_six_pack, price_unitario, stock, min_stock, units_per_box, cost_price_box)
                 if success:
                     st.success(message) # Muestra mensaje de éxito
                 else:
                     st.error(message) # Muestra mensaje de error
             else:
-                st.warning("Por favor, complete todos los campos y asegúrese de que los precios no sean negativos.") # Advertencia si faltan campos
+                st.warning("Por favor, complete todos los campos y asegúrese de que los precios y el costo no sean negativos.") # Advertencia si faltan campos
 
     st.subheader("Productos en Inventario") # Subencabezado para la lista de productos
     products = get_all_products() # Obtiene todos los productos de la base de datos
@@ -65,6 +67,7 @@ with tab1:
         # Crea un DataFrame de pandas para mostrar los productos de manera tabular
         products_data = []
         for p in products:
+            profits = calculate_profit_per_type(p) # Calcula las ganancias para cada producto
             products_data.append({
                 "ID": p.id,
                 "Nombre": p.name,
@@ -73,9 +76,15 @@ with tab1:
                 "Caja Particular": f"${p.price_caja_particular:,.2f}",
                 "Six-Pack": f"${p.price_six_pack:,.2f}",
                 "Unitario": f"${p.price_unitario:,.2f}",
+                "Valor Caja (Costo)": f"${p.cost_price_box:,.2f}", # Mostrar el nuevo campo
                 "Stock Actual": p.stock,
                 "Stock Mínimo": p.min_stock,
-                "Unidades por Caja": p.units_per_box
+                "Unidades por Caja": p.units_per_box,
+                "Ganancia CF": f"${profits['Caja Fria']:.2f}",
+                "Ganancia CC": f"${profits['Caja Caliente']:.2f}",
+                "Ganancia CP": f"${profits['Caja Particular']:.2f}",
+                "Ganancia SP": f"${profits['Six-Pack']:.2f}",
+                "Ganancia U": f"${profits['Unitario']:.2f}"
             })
         df_products = pd.DataFrame(products_data)
         st.dataframe(df_products, use_container_width=True) # Muestra el DataFrame en Streamlit
@@ -98,7 +107,7 @@ with tab2:
     if products:
         # Mapea nombres de productos a sus IDs
         product_names = {p.name: p.id for p in products}
-        selected_product_name = st.selectbox("Seleccione un Producto", list(product_names.keys()))
+        selected_product_name = st.selectbox("Seleccione un Producto", list(product_names.keys()), key="sale_product_select")
 
         selected_product_id = product_names[selected_product_name] if selected_product_name else None
         
@@ -107,7 +116,7 @@ with tab2:
 
         # Selector de tipo de precio
         price_types = ["Caja Fria", "Caja Caliente", "Caja Particular", "six-pack", "Unitario"]
-        selected_price_type = st.selectbox("Tipo de Precio", price_types)
+        selected_price_type = st.selectbox("Tipo de Precio", price_types, key="sale_price_type_select")
 
         # Determine the label for the quantity input based on the selected price type
         quantity_label = "Cantidad de Unidades"
@@ -116,8 +125,8 @@ with tab2:
         elif selected_price_type == "six-pack":
             quantity_label = "Cantidad de Six-Packs"
 
-        quantity_input = st.number_input(quantity_label, min_value=1, step=1) # Campo para la cantidad
-        discount = st.number_input("Descuento (valor entero)", min_value=0, step=1) # Campo para el descuento
+        quantity_input = st.number_input(quantity_label, min_value=1, step=1, key="sale_quantity_input") # Campo para la cantidad
+        discount = st.number_input("Descuento (valor entero)", min_value=0, step=1, key="sale_discount_input") # Campo para el descuento
 
         unit_price_display = 0.0 # Este será el precio por unidad (o por caja/six-pack para mostrar)
         total_price_display = 0.0
@@ -157,7 +166,7 @@ with tab2:
         st.write(f"**Valor Total de la Compra:** ${total_price_display:,.2f}") # Muestra el valor total
 
         # Botón para registrar la venta
-        if st.button("Registrar Venta"):
+        if st.button("Registrar Venta", key="record_sale_button"):
             if selected_product_id and quantity_input > 0:
                 # Pasar la cantidad total de unidades calculada y el precio unitario real para el registro de venta
                 success, message = record_sale(
@@ -244,7 +253,7 @@ with tab4:
     products_to_modify = get_all_products()
     if products_to_modify:
         product_names_to_modify = {p.name: p.id for p in products_to_modify}
-        selected_product_name_modify = st.selectbox("Seleccione un Producto para Modificar", list(product_names_to_modify.keys()))
+        selected_product_name_modify = st.selectbox("Seleccione un Producto para Modificar", list(product_names_to_modify.keys()), key="mod_product_select")
 
         selected_product_id_modify = product_names_to_modify[selected_product_name_modify] if selected_product_name_modify else None
         
@@ -265,6 +274,10 @@ with tab4:
             new_price_caja_particular = st.number_input("Nuevo Precio Caja Particular", value=current_product_modify.price_caja_particular, min_value=0.0, format="%.2f", key="mod_price_caja_particular")
             new_price_six_pack = st.number_input("Nuevo Precio Six-Pack", value=current_product_modify.price_six_pack, min_value=0.0, format="%.2f", key="mod_price_six_pack")
             new_price_unitario = st.number_input("Nuevo Precio Unitario", value=current_product_modify.price_unitario, min_value=0.0, format="%.2f", key="mod_price_unitario")
+            
+            # Nuevo campo para modificar: Valor Caja (Costo al Distribuidor)
+            new_cost_price_box = st.number_input("Nuevo Valor Caja (Costo al Distribuidor)", value=current_product_modify.cost_price_box, min_value=0.0, format="%.2f", key="mod_cost_price_box")
+
 
             st.write("---")
             st.subheader("Modificar Stock")
@@ -272,7 +285,7 @@ with tab4:
             new_stock = st.number_input("Nuevo Stock Actual", value=current_product_modify.stock, min_value=0, step=1, key="mod_stock")
             new_min_stock = st.number_input("Nuevo Stock Mínimo para Alerta", value=current_product_modify.min_stock, min_value=0, step=1, key="mod_min_stock")
 
-            if st.button("Guardar Cambios en Inventario"):
+            if st.button("Guardar Cambios en Inventario", key="save_mod_button"):
                 new_prices = {
                     "price_caja_fria": new_price_caja_fria,
                     "price_caja_caliente": new_price_caja_caliente,
@@ -284,7 +297,8 @@ with tab4:
                     product_id=selected_product_id_modify,
                     new_prices=new_prices,
                     new_stock=new_stock,
-                    new_min_stock=new_min_stock
+                    new_min_stock=new_min_stock,
+                    new_cost_price_box=new_cost_price_box # Pasar el nuevo valor de costo
                 )
                 if success:
                     st.success(message)

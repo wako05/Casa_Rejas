@@ -1,10 +1,10 @@
 # main.py
-from db import Product, Sale, InventoryModification, get_db_session # Importa InventoryModification
+from db import Product, Sale, InventoryModification, get_db_session
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 
 # Función para agregar un nuevo producto a la base de datos
-def add_product(name, price_caja_fria, price_caja_caliente, price_caja_particular, price_six_pack, price_unitario, stock, min_stock, units_per_box):
+def add_product(name, price_caja_fria, price_caja_caliente, price_caja_particular, price_six_pack, price_unitario, stock, min_stock, units_per_box, cost_price_box):
     session = get_db_session() # Obtiene una nueva sesión de base de datos
     try:
         # Crea una nueva instancia de Producto
@@ -17,7 +17,8 @@ def add_product(name, price_caja_fria, price_caja_caliente, price_caja_particula
             price_unitario=price_unitario,
             stock=stock,
             min_stock=min_stock,
-            units_per_box=units_per_box
+            units_per_box=units_per_box,
+            cost_price_box=cost_price_box # Nuevo campo
         )
         session.add(new_product) # Agrega el nuevo producto a la sesión
         session.commit() # Confirma los cambios en la base de datos
@@ -50,7 +51,6 @@ def get_product_by_id(product_id):
         session.close() # Cierra la sesión de la base de datos
 
 # Función para registrar una venta
-# Modificada para recibir unit_price_at_sale y total_price ya calculados desde la UI
 def record_sale(product_id, quantity, unit_price_at_sale, total_price, discount):
     session = get_db_session() # Obtiene una nueva sesión de base de datos
     try:
@@ -93,7 +93,7 @@ def get_all_sales():
         session.close() # Cierra la sesión de la base de datos
 
 # Función para actualizar los detalles de un producto y registrar el historial de cambios
-def update_product_details(product_id, new_prices, new_stock, new_min_stock):
+def update_product_details(product_id, new_prices, new_stock, new_min_stock, new_cost_price_box):
     session = get_db_session()
     try:
         product = session.query(Product).filter_by(id=product_id).first()
@@ -137,6 +137,17 @@ def update_product_details(product_id, new_prices, new_stock, new_min_stock):
                 "old_value": old_min_stock,
                 "new_value": new_min_stock
             })
+        
+        # Verificar y actualizar el valor de compra de la caja
+        if product.cost_price_box != new_cost_price_box:
+            old_cost_price_box = product.cost_price_box
+            product.cost_price_box = new_cost_price_box
+            changes_made = True
+            change_records.append({
+                "field": "cost_price_box",
+                "old_value": old_cost_price_box,
+                "new_value": new_cost_price_box
+            })
 
         if changes_made:
             # Registrar cada cambio individualmente en el historial
@@ -178,3 +189,53 @@ def get_current_inventory():
         return products # Retorna la lista de productos
     finally:
         session.close() # Cierra la sesión de la base de datos
+
+# Nueva función para calcular la ganancia por tipo de precio
+def calculate_profit_per_type(product):
+    profits = {}
+    cost_per_unit = 0.0
+
+    # Calcular el costo por unidad basado en el 'Valor Caja' y 'Unidades por Caja'
+    if product.units_per_box > 0:
+        cost_per_unit = product.cost_price_box / product.units_per_box
+    else:
+        # Si units_per_box es 0 (lo cual no debería pasar con las opciones dadas)
+        # o para el caso Unitario, el costo por unidad es el mismo que el costo de la caja si es 1 unidad
+        cost_per_unit = product.cost_price_box # Asumimos que si no hay caja, el costo de la "caja" es el costo unitario
+
+    # Ganancia para Caja Fria
+    if product.units_per_box > 0:
+        profit_caja_fria = (product.price_caja_fria / product.units_per_box) - cost_per_unit
+    else: # Fallback para evitar división por cero si units_per_box no está configurado correctamente
+        profit_caja_fria = product.price_caja_fria - cost_per_unit
+    profits["Caja Fria"] = profit_caja_fria
+
+    # Ganancia para Caja Caliente
+    if product.units_per_box > 0:
+        profit_caja_caliente = (product.price_caja_caliente / product.units_per_box) - cost_per_unit
+    else:
+        profit_caja_caliente = product.price_caja_caliente - cost_per_unit
+    profits["Caja Caliente"] = profit_caja_caliente
+
+    # Ganancia para Caja Particular
+    if product.units_per_box > 0:
+        profit_caja_particular = (product.price_caja_particular / product.units_per_box) - cost_per_unit
+    else:
+        profit_caja_particular = product.price_caja_particular - cost_per_unit
+    profits["Caja Particular"] = profit_caja_particular
+
+    # Ganancia para Six-Pack (siempre 6 unidades)
+    cost_per_six_pack_unit = 0.0
+    if product.units_per_box > 0:
+        cost_per_six_pack_unit = product.cost_price_box / product.units_per_box
+    else:
+        cost_per_six_pack_unit = product.cost_price_box # Asumimos que si no hay caja, el costo de la "caja" es el costo unitario
+
+    profit_six_pack = (product.price_six_pack / 6) - cost_per_six_pack_unit
+    profits["Six-Pack"] = profit_six_pack
+
+    # Ganancia para Unitario
+    profit_unitario = product.price_unitario - cost_per_unit
+    profits["Unitario"] = profit_unitario
+
+    return profits
