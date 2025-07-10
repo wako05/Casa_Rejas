@@ -51,7 +51,9 @@ def get_product_by_id(product_id):
         session.close() # Cierra la sesión de la base de datos
 
 # Función para registrar una venta
-def record_sale(product_id, quantity, unit_price_at_sale, total_price, discount):
+# Modificada para recibir unit_price_at_sale y total_price ya calculados desde la UI
+# Ahora también recibe cost_price_at_sale para almacenarlo en el registro de venta
+def record_sale(product_id, quantity, unit_price_at_sale, total_price, discount, cost_price_at_sale):
     session = get_db_session() # Obtiene una nueva sesión de base de datos
     try:
         product = session.query(Product).filter_by(id=product_id).first() # Busca el producto por su ID
@@ -68,7 +70,8 @@ def record_sale(product_id, quantity, unit_price_at_sale, total_price, discount)
             discount=discount,
             unit_price_at_sale=unit_price_at_sale, # Precio unitario real de la venta
             total_price=total_price, # Precio total de la venta
-            sale_date=datetime.now() # Registra la fecha y hora actual de la venta
+            sale_date=datetime.now(), # Registra la fecha y hora actual de la venta
+            cost_price_at_sale=cost_price_at_sale # Nuevo campo: Costo unitario al momento de la venta
         )
         session.add(new_sale) # Agrega la nueva venta a la sesión
 
@@ -190,7 +193,7 @@ def get_current_inventory():
     finally:
         session.close() # Cierra la sesión de la base de datos
 
-# Nueva función para calcular la ganancia por tipo de precio
+# Función para calcular la ganancia por tipo de precio (potencial, no por venta real)
 def calculate_profit_per_type(product):
     profits = {}
     cost_per_unit = 0.0
@@ -201,7 +204,8 @@ def calculate_profit_per_type(product):
     else:
         # Si units_per_box es 0 (lo cual no debería pasar con las opciones dadas)
         # o para el caso Unitario, el costo por unidad es el mismo que el costo de la caja si es 1 unidad
-        cost_per_unit = product.cost_price_box # Asumimos que si no hay caja, el costo de la "caja" es el costo unitario
+        # Asumimos que para unitario, el cost_price_box es el costo de una unidad.
+        cost_per_unit = product.cost_price_box 
 
     # Ganancia para Caja Fria
     if product.units_per_box > 0:
@@ -225,13 +229,8 @@ def calculate_profit_per_type(product):
     profits["Caja Particular"] = profit_caja_particular
 
     # Ganancia para Six-Pack (siempre 6 unidades)
-    cost_per_six_pack_unit = 0.0
-    if product.units_per_box > 0:
-        cost_per_six_pack_unit = product.cost_price_box / product.units_per_box
-    else:
-        cost_per_six_pack_unit = product.cost_price_box # Asumimos que si no hay caja, el costo de la "caja" es el costo unitario
-
-    profit_six_pack = (product.price_six_pack / 6) - cost_per_six_pack_unit
+    # El costo por unidad para six-pack es el mismo costo_per_unit general
+    profit_six_pack = (product.price_six_pack / 6) - cost_per_unit # Usar cost_per_unit general
     profits["Six-Pack"] = profit_six_pack
 
     # Ganancia para Unitario

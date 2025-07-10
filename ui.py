@@ -1,7 +1,7 @@
 # ui.py
 import streamlit as st
 import pandas as pd
-# Asegúrate de importar todas las funciones necesarias, incluyendo la nueva calculate_profit_per_type
+# Asegúrate de importar todas las funciones necesarias
 from main import add_product, get_all_products, record_sale, get_all_sales, get_product_by_id, get_current_inventory, update_product_details, get_inventory_modifications, calculate_profit_per_type
 from io import BytesIO
 
@@ -130,32 +130,45 @@ with tab2:
 
         unit_price_display = 0.0 # Este será el precio por unidad (o por caja/six-pack para mostrar)
         total_price_display = 0.0
+        cost_price_at_sale_calc = 0.0 # Costo unitario para almacenar en la venta
         
         # Variables para pasar a record_sale (unidades reales y precio unitario real para el registro)
         quantity_for_sale_record = 0 # Cantidad total de unidades individuales vendidas
         unit_price_for_sale_record = 0.0 # Precio por unidad individual para almacenar en el registro de venta
 
         if current_product:
+            # Calcular el costo por unidad basado en el 'Valor Caja' del producto
+            current_cost_per_unit = 0.0
+            if current_product.units_per_box > 0:
+                current_cost_per_unit = current_product.cost_price_box / current_product.units_per_box
+            else:
+                current_cost_per_unit = current_product.cost_price_box # Asumimos que para unitario, el costo de la "caja" es el costo unitario
+
             if selected_price_type == "Caja Fria":
                 unit_price_display = current_product.price_caja_fria # Mostrar precio de caja
                 quantity_for_sale_record = quantity_input * current_product.units_per_box # Total de unidades para stock
                 unit_price_for_sale_record = current_product.price_caja_fria / current_product.units_per_box # Precio unitario real para registro
+                cost_price_at_sale_calc = current_cost_per_unit # Costo unitario al momento de la venta
             elif selected_price_type == "Caja Caliente":
                 unit_price_display = current_product.price_caja_caliente # Mostrar precio de caja
                 quantity_for_sale_record = quantity_input * current_product.units_per_box
                 unit_price_for_sale_record = current_product.price_caja_caliente / current_product.units_per_box
+                cost_price_at_sale_calc = current_cost_per_unit
             elif selected_price_type == "Caja Particular":
                 unit_price_display = current_product.price_caja_particular # Mostrar precio de caja
                 quantity_for_sale_record = quantity_input * current_product.units_per_box
                 unit_price_for_sale_record = current_product.price_caja_particular / current_product.units_per_box
+                cost_price_at_sale_calc = current_cost_per_unit
             elif selected_price_type == "six-pack":
                 unit_price_display = current_product.price_six_pack # Mostrar precio de six-pack
                 quantity_for_sale_record = quantity_input * 6 # Total de unidades para stock
                 unit_price_for_sale_record = current_product.price_six_pack / 6 # Precio unitario real para registro
+                cost_price_at_sale_calc = current_cost_per_unit
             elif selected_price_type == "Unitario":
                 unit_price_display = current_product.price_unitario # Mostrar precio unitario
                 quantity_for_sale_record = quantity_input # Total de unidades para stock
                 unit_price_for_sale_record = current_product.price_unitario # Precio unitario real para registro
+                cost_price_at_sale_calc = current_cost_per_unit
             
             # Calcular el precio total basado en lo que se muestra (precio de caja/six-pack/unidad)
             total_price_display = (unit_price_display * quantity_input) - discount
@@ -174,7 +187,8 @@ with tab2:
                     quantity=quantity_for_sale_record,
                     unit_price_at_sale=unit_price_for_sale_record, # Pasar el precio unitario real para el registro
                     total_price=total_price_display, # Pasar el precio total calculado
-                    discount=discount # Pasar el descuento
+                    discount=discount, # Pasar el descuento
+                    cost_price_at_sale=cost_price_at_sale_calc # Pasar el costo unitario al momento de la venta
                 )
                 if success:
                     st.success(message) # Muestra mensaje de éxito
@@ -224,13 +238,20 @@ with tab3:
             # Obtiene el nombre del producto asociado a la venta
             product = get_product_by_id(s.product_id)
             product_name = product.name if product else "Desconocido"
+            
+            # Calcular la ganancia por esta venta
+            # Ganancia = (Precio Unitario de Venta - Costo Unitario al Momento de la Venta) * Cantidad Total de Unidades Vendidas
+            profit_per_sale = (s.unit_price_at_sale - s.cost_price_at_sale) * s.quantity
+            
             sales_data.append({
                 "ID Venta": s.id,
                 "Producto": product_name,
                 "Cantidad": s.quantity,
                 "Precio Unitario Venta": f"${s.unit_price_at_sale:,.2f}",
+                "Costo Unitario Venta": f"${s.cost_price_at_sale:,.2f}", # Mostrar el costo unitario de la venta
                 "Descuento": f"${s.discount:,.2f}",
                 "Precio Total": f"${s.total_price:,.2f}",
+                "Ganancia Venta": f"${profit_per_sale:,.2f}", # Nueva columna de ganancia por venta
                 "Fecha Venta": s.sale_date.strftime("%Y-%m-%d %H:%M:%S") # Formatea la fecha
             })
         df_sales = pd.DataFrame(sales_data)
