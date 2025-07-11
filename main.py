@@ -238,3 +238,63 @@ def calculate_profit_per_type(product):
     profits["Unitario"] = profit_unitario
 
     return profits
+
+# Nueva función para eliminar un producto
+def delete_product(product_id):
+    session = get_db_session()
+    try:
+        product = session.query(Product).filter_by(id=product_id).first()
+        if not product:
+            return False, "Error: Producto no encontrado."
+
+        # Registrar la eliminación en el historial de modificaciones
+        new_modification = InventoryModification(
+            product_id=product.id,
+            field_modified="product_deletion",
+            old_value=f"Producto: {product.name}, ID: {product.id}",
+            new_value="ELIMINADO",
+            modification_date=datetime.now()
+        )
+        session.add(new_modification)
+
+        # Eliminar el producto
+        session.delete(product)
+        session.commit()
+        return True, f"Producto '{product.name}' eliminado exitosamente."
+    except Exception as e:
+        session.rollback()
+        return False, f"Error al eliminar producto: {e}"
+    finally:
+        session.close()
+
+# Nueva función para eliminar una venta
+def delete_sale(sale_id):
+    session = get_db_session()
+    try:
+        sale = session.query(Sale).filter_by(id=sale_id).first()
+        if not sale:
+            return False, "Error: Venta no encontrada."
+
+        # Obtener el producto asociado para el registro de historial
+        product = get_product_by_id(sale.product_id)
+        product_name = product.name if product else "Desconocido"
+
+        # Registrar la eliminación en el historial de modificaciones
+        new_modification = InventoryModification(
+            product_id=sale.product_id, # Usar el ID del producto asociado a la venta
+            field_modified="sale_deletion",
+            old_value=f"Venta ID: {sale.id}, Producto: {product_name}, Cantidad: {sale.quantity}, Total: {sale.total_price}",
+            new_value="ELIMINADA",
+            modification_date=datetime.now()
+        )
+        session.add(new_modification)
+
+        # Eliminar la venta
+        session.delete(sale)
+        session.commit()
+        return True, f"Venta ID {sale.id} eliminada exitosamente."
+    except Exception as e:
+        session.rollback()
+        return False, f"Error al eliminar venta: {e}"
+    finally:
+        session.close()

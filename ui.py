@@ -1,8 +1,8 @@
 # ui.py
 import streamlit as st
 import pandas as pd
-# Asegúrate de importar todas las funciones necesarias
-from main import add_product, get_all_products, record_sale, get_all_sales, get_product_by_id, get_current_inventory, update_product_details, get_inventory_modifications, calculate_profit_per_type
+# Asegúrate de importar todas las funciones necesarias, incluyendo las nuevas de eliminación
+from main import add_product, get_all_products, record_sale, get_all_sales, get_product_by_id, get_current_inventory, update_product_details, get_inventory_modifications, calculate_profit_per_type, delete_product, delete_sale
 from io import BytesIO
 
 # Función para convertir un DataFrame a formato Excel
@@ -264,6 +264,27 @@ with tab3:
             file_name="historial_ventas.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
+        st.write("---")
+        st.subheader("Eliminar Venta")
+        # Selector para elegir la venta a eliminar
+        sales_for_deletion = {f"ID: {s.id} - Producto: {get_product_by_id(s.product_id).name if get_product_by_id(s.product_id) else 'Desconocido'} - Fecha: {s.sale_date.strftime('%Y-%m-%d %H:%M')}" : s.id for s in all_sales}
+        selected_sale_to_delete_label = st.selectbox("Seleccione una Venta a Eliminar", list(sales_for_deletion.keys()), key="delete_sale_select")
+        selected_sale_to_delete_id = sales_for_deletion[selected_sale_to_delete_label] if selected_sale_to_delete_label else None
+
+        # Confirmación y botón de eliminación de venta
+        if selected_sale_to_delete_id:
+            confirm_delete_sale = st.checkbox(f"Confirmar eliminación de Venta ID: {selected_sale_to_delete_id}", key="confirm_delete_sale")
+            if st.button("Eliminar Venta Seleccionada", key="delete_sale_button"):
+                if confirm_delete_sale:
+                    success, message = delete_sale(selected_sale_to_delete_id)
+                    if success:
+                        st.success(message)
+                        st.rerun() # Recargar para reflejar la eliminación
+                    else:
+                        st.error(message)
+                else:
+                    st.warning("Por favor, marque la casilla para confirmar la eliminación de la venta.")
     else:
         st.info("No hay ventas registradas.")
 
@@ -331,6 +352,27 @@ with tab4:
         st.info("No hay productos en el inventario para modificar. Agregue productos en la pestaña 'Inventario'.")
 
     st.write("---")
+    st.subheader("Eliminar Producto")
+    # Selector para elegir el producto a eliminar
+    products_for_deletion = {f"ID: {p.id} - {p.name}" : p.id for p in get_all_products()}
+    selected_product_to_delete_label = st.selectbox("Seleccione un Producto a Eliminar", list(products_for_deletion.keys()), key="delete_product_select")
+    selected_product_to_delete_id = products_for_deletion[selected_product_to_delete_label] if selected_product_to_delete_label else None
+
+    # Confirmación y botón de eliminación de producto
+    if selected_product_to_delete_id:
+        confirm_delete_product = st.checkbox(f"Confirmar eliminación de Producto: {selected_product_to_delete_label}", key="confirm_delete_product")
+        if st.button("Eliminar Producto Seleccionado", key="delete_product_button"):
+            if confirm_delete_product:
+                success, message = delete_product(selected_product_to_delete_id)
+                if success:
+                    st.success(message)
+                    st.rerun() # Recargar para reflejar la eliminación
+                else:
+                    st.error(message)
+            else:
+                st.warning("Por favor, marque la casilla para confirmar la eliminación del producto.")
+
+    st.write("---")
     st.subheader("Historial de Modificaciones de Inventario")
     modifications = get_inventory_modifications()
     if modifications:
@@ -357,3 +399,4 @@ with tab4:
         )
     else:
         st.info("No hay historial de modificaciones de inventario.")
+
