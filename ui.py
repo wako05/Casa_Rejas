@@ -1,9 +1,42 @@
 # ui.py
 import streamlit as st
 import pandas as pd
-# Asegúrate de importar todas las funciones necesarias, incluyendo las nuevas de eliminación
+# Asegúrate de importar todas las funciones necesarias
 from main import add_product, get_all_products, record_sale, get_all_sales, get_product_by_id, get_current_inventory, update_product_details, get_inventory_modifications, calculate_profit_per_type, delete_product, delete_sale
 from io import BytesIO
+
+# Nueva función para formatear números para Excel en español
+def format_number_for_excel_es(value):
+    """
+    Formatea un número a una cadena de texto adecuada para Excel en español,
+    usando '.' como separador de miles y ',' como separador decimal.
+    Maneja valores None/no numéricos de forma segura.
+    """
+    if value is None or not isinstance(value, (int, float)):
+        return str(value) # Retorna como cadena si no es un número
+
+    # Manejar el signo negativo
+    sign = "-" if value < 0 else ""
+    abs_value = abs(value)
+
+    # Formatear a 2 decimales primero (ej. 1234.56)
+    s_value = f"{abs_value:.2f}"
+    
+    # Dividir en parte entera y fraccionaria
+    parts = s_value.split('.')
+    integer_part = parts[0]
+    decimal_part = parts[1] if len(parts) > 1 else "00"
+
+    # Añadir separadores de miles a la parte entera
+    formatted_integer_part = []
+    for i, digit in enumerate(reversed(integer_part)):
+        formatted_integer_part.append(digit)
+        if (i + 1) % 3 == 0 and (i + 1) != len(integer_part):
+            formatted_integer_part.append('.')
+    formatted_integer_part = "".join(reversed(formatted_integer_part))
+
+    return f"{sign}{formatted_integer_part},{decimal_part}"
+
 
 # Función para convertir un DataFrame a formato Excel
 def to_excel(df):
@@ -71,20 +104,20 @@ with tab1:
             products_data.append({
                 "ID": p.id,
                 "Nombre": p.name,
-                "Caja Fria": f"${p.price_caja_fria:,.2f}",
-                "Caja Caliente": f"${p.price_caja_caliente:,.2f}",
-                "Caja Particular": f"${p.price_caja_particular:,.2f}",
-                "Six-Pack": f"${p.price_six_pack:,.2f}",
-                "Unitario": f"${p.price_unitario:,.2f}",
-                "Valor Caja (Costo)": f"${p.cost_price_box:,.2f}", # Mostrar el nuevo campo
+                "Caja Fria": format_number_for_excel_es(p.price_caja_fria),
+                "Caja Caliente": format_number_for_excel_es(p.price_caja_caliente),
+                "Caja Particular": format_number_for_excel_es(p.price_caja_particular),
+                "Six-Pack": format_number_for_excel_es(p.price_six_pack),
+                "Unitario": format_number_for_excel_es(p.price_unitario),
+                "Valor Caja (Costo)": format_number_for_excel_es(p.cost_price_box), # Mostrar el nuevo campo
                 "Stock Actual": p.stock,
                 "Stock Mínimo": p.min_stock,
                 "Unidades por Caja": p.units_per_box,
-                "Ganancia CF": f"${profits['Caja Fria']:.2f}",
-                "Ganancia CC": f"${profits['Caja Caliente']:.2f}",
-                "Ganancia CP": f"${profits['Caja Particular']:.2f}",
-                "Ganancia SP": f"${profits['Six-Pack']:.2f}",
-                "Ganancia U": f"${profits['Unitario']:.2f}"
+                "Ganancia CF": format_number_for_excel_es(profits['Caja Fria']),
+                "Ganancia CC": format_number_for_excel_es(profits['Caja Caliente']),
+                "Ganancia CP": format_number_for_excel_es(profits['Caja Particular']),
+                "Ganancia SP": format_number_for_excel_es(profits['Six-Pack']),
+                "Ganancia U": format_number_for_excel_es(profits['Unitario'])
             })
         df_products = pd.DataFrame(products_data)
         st.dataframe(df_products, use_container_width=True) # Muestra el DataFrame en Streamlit
@@ -247,11 +280,11 @@ with tab3:
                 "ID Venta": s.id,
                 "Producto": product_name,
                 "Cantidad": s.quantity,
-                "Precio Unitario Venta": f"${s.unit_price_at_sale:,.2f}",
-                "Costo Unitario Venta": f"${s.cost_price_at_sale:,.2f}", # Mostrar el costo unitario de la venta
-                "Descuento": f"${s.discount:,.2f}",
-                "Precio Total": f"${s.total_price:,.2f}",
-                "Ganancia Venta": f"${profit_per_sale:,.2f}", # Nueva columna de ganancia por venta
+                "Precio Unitario Venta": format_number_for_excel_es(s.unit_price_at_sale),
+                "Costo Unitario Venta": format_number_for_excel_es(s.cost_price_at_sale), # Mostrar el costo unitario de la venta
+                "Descuento": format_number_for_excel_es(s.discount),
+                "Precio Total": format_number_for_excel_es(s.total_price),
+                "Ganancia Venta": format_number_for_excel_es(profit_per_sale), # Nueva columna de ganancia por venta
                 "Fecha Venta": s.sale_date.strftime("%Y-%m-%d %H:%M:%S") # Formatea la fecha
             })
         df_sales = pd.DataFrame(sales_data)
@@ -399,4 +432,3 @@ with tab4:
         )
     else:
         st.info("No hay historial de modificaciones de inventario.")
-
